@@ -1,12 +1,12 @@
 //=============================================================================
-// RPG Maker MZ - VariableChoiceSystem
+// RPG Maker MZ - ParallelChoiceSystem
 //=============================================================================
 // Copyright (c) 2025 KiyonakaNata
 // This software is released under the MIT License.
 // http://opensource.org/licenses/mit-license.php
 // ----------------------------------------------------------------------------
 // Version
-// 1.0.0 2025/08/04 変数選択肢システム（距離条件付き強制終了・選択対応・キャンセル不可）
+// 1.0.0 2025/08/04 並列処理実行可能選択肢システム（距離条件付き強制終了・選択対応・キャンセル不可）
 // ----------------------------------------------------------------------------
 // [Blog]   : https://kiyonaka.cfbx.jp/
 // [GitHub] : https://github.com/KiyonakaNata/rpgmaker-mz-plugins
@@ -14,26 +14,27 @@
 
 /*:
  * @target MZ
- * @plugindesc 変数選択肢システム（距離条件付き強制終了対応・キャンセル不可）
+ * @plugindesc 並列処理実行可能選択肢システム（距離条件付き強制終了対応・キャンセル不可）
  * @author KiyonakaNata
  * 
- * @help VariableChoiceSystem.js
+ * @help ParallelChoiceSystem.js
  * 
  * 選択肢を標準イベントコマンドではなく、
  * Scene_Map上で独自に表示・操作できるプラグインです。
+ * 並列イベントや接触イベントが生きたまま選択肢を表示できます。
  * 
  * 
  * 【できること】
  * - 並列イベントや接触イベントが生きたまま選択肢表示
- * - `$gameSystem.setupVariableChoice(["A", "B", "C"], 10);`
+ * - `$gameSystem.setupParallelChoice(["A", "B", "C"], 10);`
  *     → 変数10に選択index（上記の例だと1,2,3）が格納される
- * - `$gameSystem.setupVariableChoice(["A", "B", "C"], 10, {eventId: 2, distance: 2, index: 99});`
+ * - `$gameSystem.setupParallelChoice(["A", "B", "C"], 10, {eventId: 2, distance: 2, index: 99});`
  *     → イベントID 2 がプレイヤーの周囲2マス以内にいる場合、選択肢を強制終了して変数10に99を設定
  * - キャンセル不可（Escキー/右クリックは無効）
  * 
  * 【使用例】
- * ◆スクリプト：$gameSystem.setupVariableChoice(["攻撃", "防御", "逃げる"], 20);
- * ◆スクリプト：$gameSystem.setupVariableChoice(["攻撃", "防御", "逃げる"], 20, {eventId: 2, distance: 2, index: 1});
+ * ◆スクリプト：$gameSystem.setupParallelChoice(["攻撃", "防御", "逃げる"], 20);
+ * ◆スクリプト：$gameSystem.setupParallelChoice(["攻撃", "防御", "逃げる"], 20, {eventId: 2, distance: 2, index: 1});
  *     → イベントID 2 がプレイヤーの周囲2マス以内にいる場合、選択肢を強制終了して変数20に1（攻撃）を設定
  * 
  ** 【注意事項】
@@ -47,8 +48,8 @@
 
 (() => {
 
-    // 変数選択肢ウィンドウクラス
-    class Window_VariableChoice extends Window_Command {
+    // 並列選択肢ウィンドウクラス
+    class Window_ParallelChoice extends Window_Command {
       initialize() {
         // 初期化時は仮のサイズで設定
         super.initialize(new Rectangle(0, 0, 450, 240));
@@ -60,7 +61,7 @@
       }
     
       makeCommandList() {
-        const choiceData = $gameSystem._variableChoiceData?.choices || [];
+        const choiceData = $gameSystem._parallelChoiceData?.choices || [];
         choiceData.forEach(choice => this.addCommand(choice, 'select'));
       }
       
@@ -70,7 +71,7 @@
       }
       
       adjustWindowSize() {
-        const choiceData = $gameSystem._variableChoiceData?.choices || [];
+        const choiceData = $gameSystem._parallelChoiceData?.choices || [];
         if (choiceData.length === 0) return;
         
         // 最大文字数を計算
@@ -112,17 +113,17 @@
       update() {
         super.update();
         // 選択肢表示中でも強制選択を処理
-        if (this.active && $gameSystem._variableChoiceData?.forcedIndex != null) {
-          const selectedIndex = $gameSystem._variableChoiceData.forcedIndex;
+        if (this.active && $gameSystem._parallelChoiceData?.forcedIndex != null) {
+          const selectedIndex = $gameSystem._parallelChoiceData.forcedIndex;
           this.select(selectedIndex);
           this.processOk();
-          $gameSystem._variableChoiceData.forcedIndex = null;
+          $gameSystem._parallelChoiceData.forcedIndex = null;
         }
       }
     
       callOkHandler() {
         const selectedIndex = this.index();
-        const targetVariableId = $gameSystem._variableChoiceData?.variableId;
+        const targetVariableId = $gameSystem._parallelChoiceData?.variableId;
         if (targetVariableId > 0) {
           $gameVariables.setValue(targetVariableId, selectedIndex + 1);
           // 100ms後に0で初期化
@@ -132,7 +133,7 @@
         }
         this.deactivate();
         this.close();
-        if ($gameSystem._variableChoiceData) $gameSystem._variableChoiceData.isActive = false;
+        if ($gameSystem._parallelChoiceData) $gameSystem._parallelChoiceData.isActive = false;
       }
     
       // キャンセルを禁止
@@ -144,19 +145,19 @@
     const _Scene_Map_createAllWindows = Scene_Map.prototype.createAllWindows;
     Scene_Map.prototype.createAllWindows = function() {
       _Scene_Map_createAllWindows.call(this);
-      this._variableChoiceWindow = new Window_VariableChoice();
-      this.addWindow(this._variableChoiceWindow);
+      this._parallelChoiceWindow = new Window_ParallelChoice();
+      this.addWindow(this._parallelChoiceWindow);
     };
     
     const _Scene_Map_update = Scene_Map.prototype.update;
     Scene_Map.prototype.update = function() {
       _Scene_Map_update.call(this);
-      this.updateVariableChoice();
+      this.updateParallelChoice();
     };
     
-    Scene_Map.prototype.updateVariableChoice = function() {
-      const choiceData = $gameSystem._variableChoiceData;
-      const choiceWindow = this._variableChoiceWindow;
+    Scene_Map.prototype.updateParallelChoice = function() {
+      const choiceData = $gameSystem._parallelChoiceData;
+      const choiceWindow = this._parallelChoiceWindow;
       // 重複呼び出しを防ぐ：既にアクティブな場合は何もしない
       if (choiceData?.isActive && choiceWindow && choiceWindow.openness === 0 && !choiceWindow.active) {
         // ここで変数を0に初期化
@@ -185,7 +186,7 @@
     };
     
     Scene_Map.prototype.checkDistanceCondition = function() {
-      const choiceData = $gameSystem._variableChoiceData;
+      const choiceData = $gameSystem._parallelChoiceData;
       const distanceCondition = choiceData.distanceCondition;
       
       // 指定されたイベントIDのイベントを取得
@@ -216,7 +217,7 @@
         }
         
         // 選択肢ウィンドウを強制終了
-        const choiceWindow = SceneManager._scene._variableChoiceWindow;
+        const choiceWindow = SceneManager._scene._parallelChoiceWindow;
         if (choiceWindow && choiceWindow.active) {
           choiceWindow.deactivate();
           choiceWindow.close();
@@ -228,9 +229,9 @@
       }
     };
     
-    Game_System.prototype.setupVariableChoice = function(choices, variableId, distanceCondition = null) {
+    Game_System.prototype.setupParallelChoice = function(choices, variableId, distanceCondition = null) {
       // 重複呼び出しを防ぐ：既にアクティブな場合は何もしない
-      if (this._variableChoiceData?.isActive) {
+      if (this._parallelChoiceData?.isActive) {
         return;
       }
       
@@ -239,7 +240,7 @@
         $gameVariables.setValue(variableId, -1);  // 未選択状態を-1で初期化
       }
       
-      this._variableChoiceData = {
+      this._parallelChoiceData = {
         choices,
         variableId,
         isActive: true,
